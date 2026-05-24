@@ -1,0 +1,109 @@
+%YAML 1.1
+---
+vars:
+  address-groups:
+    HOME_NET: "[192.168.0.0/16,10.0.0.0/8,172.16.0.0/12]"
+    EXTERNAL_NET: "!$HOME_NET"
+    HTTP_SERVERS: "$HOME_NET"
+    SQL_SERVERS: "$HOME_NET"
+    DNS_SERVERS: "$HOME_NET"
+    SMTP_SERVERS: "$HOME_NET"
+  port-groups:
+    HTTP_PORTS: "80"
+    SHELLCODE_PORTS: "!80"
+    ORACLE_PORTS: 1521
+    SSH_PORTS: 22
+    DNP3_PORTS: 20000
+    MODBUS_PORTS: 502
+
+default-log-dir: /var/log/suricata/
+
+stats:
+  enabled: yes
+  interval: 8
+
+outputs:
+  - fast:
+      enabled: yes
+      filename: fast.log
+      append: yes
+
+  - eve-log:
+      enabled: yes
+      filetype: regular
+      filename: eve.json
+      types:
+        - alert:
+            payload: yes
+            payload-buffer-size: 4kb
+            payload-printable: yes
+            packet: yes
+            metadata: yes
+            http-body: yes
+            http-body-printable: yes
+        - http:
+            extended: yes
+        - dns:
+            query: yes
+            answer: yes
+        - tls:
+            extended: yes
+        - files:
+            force-magic: yes
+        - smtp: {}
+        - ssh: {}
+        - flow: {}
+        - netflow: {}
+
+  - stats:
+      enabled: yes
+      filename: stats.log
+      append: yes
+      totals: yes
+      threads: no
+
+logging:
+  default-log-level: notice
+  outputs:
+    - console:
+        enabled: yes
+    - file:
+        enabled: yes
+        level: info
+        filename: /var/log/suricata/suricata.log
+
+af-packet:
+  - interface: eth0
+    cluster-id: 99
+    cluster-type: cluster_flow
+    defrag: yes
+    use-mmap: yes
+    tpacket-v3: yes
+
+pcap:
+  - interface: eth0
+
+app-layer:
+  protocols:
+    tls:
+      enabled: yes
+      detection-ports:
+        dp: 443
+    http:
+      enabled: yes
+    ftp:
+      enabled: yes
+    ssh:
+      enabled: yes
+    smtp:
+      enabled: yes
+    dns:
+      enabled: yes
+      detection-ports:
+        dp: 53
+
+rule-files:
+  - /etc/suricata/rules/local.rules
+  - /etc/suricata/rules/suricata.rules
+
+default-rule-path: /etc/suricata/rules
