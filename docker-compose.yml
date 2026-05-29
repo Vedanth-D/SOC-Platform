@@ -1,0 +1,114 @@
+
+networks:
+  soc-network:
+    driver: bridge
+
+volumes:
+  elasticsearch-data:
+  suricata-logs:
+  zeek-logs:
+
+services:
+
+  elasticsearch:
+    image: docker.elastic.co/elasticsearch/elasticsearch:8.11.0
+    container_name: elasticsearch
+    environment:
+      - discovery.type=single-node
+      - xpack.security.enabled=false
+      - ES_JAVA_OPTS=-Xms1g -Xmx1g
+      - bootstrap.memory_lock=true
+    ulimits:
+      memlock:
+        soft: -1
+        hard: -1
+    volumes:
+      - elasticsearch-data:/usr/share/elasticsearch/data
+    ports:
+      - "9200:9200"
+    networks:
+      - soc-network
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9200"]
+      interval: 30s
+      timeout: 10s
+      retries: 5
+
+  kibana:
+    image: docker.elastic.co/kibana/kibana:8.11.0
+    container_name: kibana
+    environment:
+      - ELASTICSEARCH_HOSTS=http://elasticsearch:9200
+    ports:
+      - "5601:5601"
+    networks:
+      - soc-network
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  logstash:
+    image: docker.elastic.co/logstash/logstash:8.11.0
+    container_name: logstash
+    volumes:
+      - ./logstash/pipeline:/usr/share/logstash/pipeline
+      - ./logstash/config/logstash.yml:/usr/share/logstash/config/logstash.yml
+      - suricata-logs:/var/log/suricata
+      - zeek-logs:/var/log/zeek
+    ports:
+      - "5044:5044"
+      - "5000:5000/udp"
+    networks:
+      - soc-network
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
+
+  suricata:
+    image: jasonish/suricata:latest
+    container_name: suricata
+    networks:
+      - soc-network
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+      - SYS_NICE
+    volumes:
+      - ./suricata/suricata.yaml:/etc/suricata/suricata.yaml
+      - ./suricata/rules:/etc/suricata/rules
+      - suricata-logs:/var/log/suricata
+    command: -i eth0 -v
+    environment:
+      - SURICATA_OPTIONS=-i eth0
+    restart: unless-stopped
+
+  zeek:
+    image: activecm/zeek:latest
+    container_name: zeek
+    networks:
+      - soc-network
+    cap_add:
+      - NET_ADMIN
+      - NET_RAW
+    volumes:
+      - zeek-logs:/usr/local/zeek/logs
+    environment:
+      - ZEEK_INTERFACE=eth0
+    restart: unless-stopped
+
+  wazuh-manager:
+    image: wazuh/wazuh-manager:4.7.0
+    container_name: wazuh-manager
+    hostname: wazuh-manager
+    ports:
+      - "1514:1514"
+      - "1515:1515"
+      - "514:514/udp"
+      - "55000:55000"
+    volumes:
+      - ./wazuh/config/ossec.conf:/var/ossec/etc/ossec.conf
+    networks:
+      - soc-network
+    depends_on:
+      elasticsearch:
+        condition: service_healthy
